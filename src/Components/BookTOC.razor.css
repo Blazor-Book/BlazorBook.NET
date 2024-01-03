@@ -1,0 +1,9 @@
+.book-toc {
+    width: 300px;
+    display: flex;
+    color: var(--book-primary-text);
+
+    & .sub {
+        padding-left: 20px;
+    }
+}

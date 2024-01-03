@@ -1,0 +1,89 @@
+@using System.Net.Http
+@using Markdig
+@using Markdig.Syntax
+@using Markdig.Syntax.Inlines
+
+<div class="book-toc">
+    @if (_loadingTask?.IsCompletedSuccessfully != true)
+    {
+        <Loading />
+    }
+    else
+    {
+        @RenderTOCItem(_loadingTask.Result)
+    }
+</div>
+
+@code
+{
+    [CascadingParameter(Name = "BaseUri")]
+    public string BaseUri { get; set; } = default!;
+
+    [Parameter]
+    public string TOC { get; set; } = string.Empty;
+
+    [Parameter]
+    public HttpClient? HttpClient { get; set; }
+
+    private Task<TOCItem>? _loadingTask;
+    private string? _content;
+
+    protected override void OnInitialized()
+    {
+        if (HttpClient == null)
+        {
+            throw new ArgumentNullException(nameof(HttpClient));
+        }
+
+        if (string.IsNullOrEmpty(TOC))
+        {
+            throw new ArgumentException("TOC is missing.");
+        }
+
+        _loadingTask = LoadingAsync();
+        _loadingTask.ContinueWith(_ => StateHasChanged());
+    }
+
+    private async Task<TOCItem> LoadingAsync()
+    {
+        var content = await HttpClient!.GetStringAsync(TOC);
+        var result = Markdown.Parse(content);
+        var topToc = new TOCItem();
+        foreach (var listBlock in result.Where(t => t.GetType() == typeof(ListBlock)))
+        {
+            topToc.SubTOCItems.AddRange(ParseListBlock((ListBlock)listBlock));
+        }
+        return topToc;
+    }
+
+    private List<TOCItem> ParseListBlock(ListBlock block)
+        => block.Where(t => t.GetType() == typeof(ListItemBlock)).Select(t => ParseListItemBlock((ListItemBlock)t)).ToList();
+
+    private TOCItem ParseListItemBlock(ListItemBlock listItemBlock)
+    {
+        var item = new TOCItem()
+        {
+            Title = listItemBlock.Descendants<LiteralInline>().FirstOrDefault()?.Content.ToString() ?? string.Empty,
+            Link = listItemBlock.Descendants<LinkInline>().FirstOrDefault()?.Url ?? string.Empty,
+        };
+
+        foreach (var listBlock in listItemBlock.Where(t => t.GetType() == typeof(ListBlock)))
+        {
+            item.SubTOCItems.AddRange(ParseListBlock((ListBlock)listBlock));
+        }
+        return item;
+    }
+
+    RenderFragment RenderTOCItem(TOCItem tocItem)
+    {
+        return @<div>
+                    <div class="group"><a href="@BaseUri/@tocItem.Link">@tocItem.Title</a></div>
+                    <div class="sub">
+                        @foreach (var subItem in tocItem.SubTOCItems)
+                        {
+                            @RenderTOCItem(subItem)
+                        }
+                    </div>
+               </div>;
+    }
+}

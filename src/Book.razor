@@ -1,0 +1,101 @@
+﻿@inject NavigationManager NavigationManager
+@using BlazorBook.NET.Components
+@using System.Text
+@using System.Net.Http
+@using System.Net.Http.Json
+
+@((MarkupString)BuildStyle())
+
+<CascadingValue Value="@BaseUri" Name="BaseUri">
+<div class="blazor-book">
+    @if (_loadingTask?.IsCompletedSuccessfully != true)
+    {
+        <Loading />
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_config!.TOC))
+        {
+            <BookTOC HttpClient=@_httpClient TOC=@_config.TOC/>
+        }
+        <BookPage />
+    }
+</div>
+</CascadingValue>
+
+@code
+{
+    [Parameter]
+    public string Config { get; set; } = default!;
+
+    [Parameter]
+    public string BaseUri { get; set; } = default!;
+
+    [Parameter]
+    public string? Path { get; set; }
+
+    [Parameter]
+    public Dictionary<string, string> Theme { get; set; } = Themes.Dark;
+
+    private HttpClient _httpClient = new HttpClient();
+    private Task? _loadingTask;
+    private BookConfig? _config;
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrEmpty(Config))
+        {
+            throw new ArgumentException("Config is missing.");
+        }
+
+        _loadingTask = LoadingBookAsync();
+        _loadingTask.ContinueWith(_ => StateHasChanged());
+    }
+
+    private async Task LoadingBookAsync()
+    {
+        // Loading config.
+        _config = await LoadingConfigAsync();
+    }
+
+    private string BuildStyle()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("<style>");
+        sb.AppendLine(":root {");
+        foreach (var (key, value) in Theme)
+        {
+            sb.AppendLine($"    --{key}: {value};");
+        }
+        sb.AppendLine("}");
+        sb.AppendLine("</style>");
+        return sb.ToString();
+    }
+
+    private async Task<BookConfig> LoadingConfigAsync()
+    {
+        Uri configUri;
+        if (Uri.IsWellFormedUriString(Config, UriKind.Absolute))
+        {
+            configUri = new Uri(Config);
+        }
+        else if (Uri.IsWellFormedUriString(Config, UriKind.Relative))
+        {
+            configUri = new Uri(new Uri(NavigationManager.Uri), Config);
+        }
+        else
+        {
+            throw new ArgumentException("Config is invalid uri.");
+        }
+
+        _httpClient.BaseAddress = configUri;
+
+        var config = await _httpClient.GetFromJsonAsync<BookConfig>(configUri);
+        if (config == null)
+        {
+            throw new Exception("Config is invalid");
+        }
+
+        return config;
+    }
+}

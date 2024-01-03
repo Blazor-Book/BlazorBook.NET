@@ -1,0 +1,5 @@
+.blazor-book {
+    display: flex;
+    flex: 1;
+    background-color: var(--book-background);
+}
